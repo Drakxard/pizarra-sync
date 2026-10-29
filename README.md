@@ -22,6 +22,8 @@ En Windows también funciona `npx.cmd --yes pnpm@9.15.0 dev`. Desarrollo local u
 
 ## Verificación
 
+Verificado en la URL pública: 24 pruebas de navegador aprobadas con sesiones independientes, incluyendo dibujo y arrastre antes de soltar el mouse, presencia, selecciones, enlaces, subidas R2, imágenes tras cerrar todos los clientes, reconexión, conflictos concurrentes y aislamiento de salas. También aprobaron la comprobación de tipos, 117 pruebas unitarias y la compilación. Las pruebas de persistencia verifican volver a entrar; no simulan una caída abrupta del proceso ni sustituyen una prueba de recuperación desde una copia de seguridad.
+
 ```sh
 pnpm typecheck
 pnpm test
