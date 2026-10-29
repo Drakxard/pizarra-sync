@@ -6,6 +6,7 @@ Pizarra colaborativa basada en [Komuboard](https://github.com/donth77/komuboard)
 - Servidor: https://pizarra-komuboard.dariorafael2005.workers.dev
 - Vercel sirve la interfaz Vite. Cloudflare Durable Objects con SQLite conserva las salas y sincroniza Yjs. R2 almacena imágenes.
 - Sin registro: abrí la aplicación y usá **Compartir** para enviar el enlace. Cualquiera con ese enlace puede editar.
+- Al renombrar una sala, su dirección queda como `/nuevo-nombre`. Un directorio SQLite en Cloudflare mantiene la relación con el tablero original; los nombres ocupados se rechazan para evitar mezclar salas. Los enlaces anteriores siguen resolviendo al mismo contenido.
 - Sin eliminación programada de salas o imágenes. No requiere clave de licencia ni VPS. Se aplican las cuotas de los proveedores.
 
 ## Desarrollo

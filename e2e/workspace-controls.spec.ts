@@ -2,7 +2,9 @@ import { expect, test } from "@playwright/test";
 import { calibrate, connectPeer, drawStroke, injectSticky, objectIds, uniqueRoom } from "./helpers";
 
 test("mobile keeps the editable room title and sharing controls on screen", async ({ browser }) => {
-  const a = await connectPeer(browser, uniqueRoom("mobile-title"), {
+  const mobileRoom = uniqueRoom("mobile-title");
+  const mobileTitle = `Mi clase ${mobileRoom}`;
+  const a = await connectPeer(browser, mobileRoom, {
     touch: true,
     viewport: { width: 390, height: 844 },
   });
@@ -14,9 +16,9 @@ test("mobile keeps the editable room title and sharing controls on screen", asyn
     expect(share.x + share.width).toBeLessThanOrEqual(390);
     expect(titleRect.width).toBeGreaterThan(40);
     expect(titleRect.x).toBeGreaterThanOrEqual(0);
-    await title.fill("Mi clase");
+    await title.fill(mobileTitle);
     await title.press("Enter");
-    await expect(title).toHaveText("Mi clase");
+    await expect(title).toHaveText(mobileTitle);
     await a.page.screenshot({ path: "test-results/mobile-controls.png" });
   } finally {
     await a.close();
@@ -56,6 +58,9 @@ test("room names update readable URLs while old and new links keep the same boar
   browser,
 }) => {
   const room = uniqueRoom("room-title");
+  const titleSuffix = Math.random().toString(36).slice(2, 8);
+  const title = `Clase de biología ${titleSuffix}`;
+  const slug = `clase-de-biologia-${titleSuffix}`;
   const a = await connectPeer(browser, room);
   const b = await connectPeer(browser, room);
   try {
@@ -65,23 +70,23 @@ test("room names update readable URLs while old and new links keep the same boar
     await a.page.locator('[data-testid="share"]').click();
     await a.page.keyboard.press("Escape");
     const name = a.page.locator(".room-pill [contenteditable]");
-    await name.fill("Clase de biología");
+    await name.fill(title);
     await name.press("Enter");
-    await expect(b.page.locator(".room-pill strong")).toHaveText("Clase de biología");
-    await expect(a.page).toHaveURL(new RegExp(`/${room}/clase-de-biologia$`));
-    await expect(b.page).toHaveURL(new RegExp(`/${room}/clase-de-biologia$`));
+    await expect(b.page.locator(".room-pill strong")).toHaveText(title);
+    await expect(a.page).toHaveURL(new RegExp(`/${slug}$`));
+    await expect(b.page).toHaveURL(new RegExp(`/${slug}$`));
     const renamedUrl = a.page.url();
     await a.page.locator('[data-testid="share"]').click();
     await expect(a.page.locator(".share-url")).toHaveValue(renamedUrl);
     await a.page.keyboard.press("Escape");
     await name.fill("Cancelar este cambio");
     await name.press("Escape");
-    await expect(name).toHaveText("Clase de biología");
+    await expect(name).toHaveText(title);
     await a.page.reload();
-    await expect(a.page.locator(".room-pill strong")).toHaveText("Clase de biología");
+    await expect(a.page.locator(".room-pill strong")).toHaveText(title);
     await expect.poll(() => objectIds(a.page)).toContain("before-rename");
     await b.page.goto(url); // An old query-string link must still open the populated board.
-    await expect(b.page.locator(".room-pill strong")).toHaveText("Clase de biología");
+    await expect(b.page.locator(".room-pill strong")).toHaveText(title);
     await expect.poll(() => objectIds(b.page)).toContain("before-rename");
     await expect(b.page).toHaveURL(renamedUrl);
     await expect(a.page.locator("#help-btn")).toHaveCount(0);

@@ -118,15 +118,37 @@ const applyGrid = (g: GridMode): void => {
 // The room comes from the URL (?room= or first path segment). If there's no
 // room, mint a fresh shareable one and write it into the address bar — so
 // opening Komuboard with no link drops you into your own room, not a shared lobby.
-let room = roomIdFromUrl(new URL(window.location.href), "");
+const initialUrl = new URL(window.location.href);
+let room = roomIdFromUrl(initialUrl, "");
 if (!room) {
   room = randomRoomId();
   const u = new URL(window.location.href);
   u.searchParams.set("room", room);
   window.history.replaceState(null, "", u);
 }
-const store = createAppStore(room);
 const host = import.meta.env.VITE_WORKER_HOST ?? "127.0.0.1:8787";
+const serverUrl = `${location.protocol}//${host}`;
+try {
+  const direct =
+    !!initialUrl.searchParams.get("room") ||
+    initialUrl.pathname.split("/").filter(Boolean).length > 1 ||
+    !roomIdFromUrl(initialUrl, "");
+  const response = await fetch(
+    `${serverUrl}/rooms/resolve?name=${encodeURIComponent(room)}&direct=${direct ? 1 : 0}`,
+    { signal: AbortSignal.timeout(15000) },
+  );
+  if (!response.ok) throw new Error("No se pudo abrir la sala");
+  room = ((await response.json()) as { roomId: string }).roomId;
+} catch (error) {
+  const root = document.getElementById("app");
+  if (root) {
+    root.innerHTML =
+      '<div style="padding:32px"><p>No se pudo conectar con la sala. Revisá tu conexión e intentá de nuevo.</p><button type="button">Reintentar</button></div>';
+    root.querySelector("button")?.addEventListener("click", () => location.reload());
+  }
+  throw error;
+}
+const store = createAppStore(room);
 
 const ydoc = new Y.Doc();
 const provider = new YProvider(host, room, ydoc, { party: PARTY });
@@ -1115,31 +1137,54 @@ window.addEventListener("keyup", (e) => {
 const topbar = document.querySelector("komu-topbar");
 const drawer = document.querySelector("komu-drawer");
 const roomMetadata = ydoc.getMap<string>("metadata");
+let migratingTitle = "";
+let renamingRoom = false;
+async function renameRoom(title: string): Promise<void> {
+  if (renamingRoom) {
+    paintRoomName();
+    return;
+  }
+  renamingRoom = true;
+  try {
+    const response = await fetch(`${serverUrl}/rooms/rename`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ roomId: room, title }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const data = (await response.json()) as { title: string; slug: string; error?: string };
+    if (!response.ok) throw new Error(data.error || "No se pudo cambiar el nombre de la sala");
+    ydoc.transact(() => {
+      roomMetadata.set("title", data.title);
+      roomMetadata.set("slug", data.slug);
+    });
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : "No se pudo cambiar el nombre de la sala");
+    paintRoomName();
+  } finally {
+    renamingRoom = false;
+  }
+}
 function paintRoomName(): void {
   const name = roomMetadata.get("title") || room;
   if (topbar && !topbar.contains(document.activeElement)) topbar.room = name;
   if (drawer) drawer.room = name;
   document.title = `Komuboard — ${name}`;
-  if (roomMetadata.get("title")) {
-    // The first segment remains the stable room ID; the second is a readable label.
-    // Old links and two rooms with the same title still resolve to their original boards.
-    const slug =
-      name
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "")
-        .slice(0, 80) || "sala";
+  const slug = roomMetadata.get("slug");
+  if (slug && /^[a-z0-9-]{1,64}$/.test(slug)) {
     const url = new URL(window.location.href);
-    url.pathname = `/${room}/${slug}`;
+    url.pathname = `/${slug}`;
     url.searchParams.delete("room");
     if (url.href !== window.location.href) window.history.replaceState(null, "", url);
+  } else if (roomMetadata.get("title") && migratingTitle !== name) {
+    // Older boards retain their data and acquire a persistent short URL on first visit.
+    migratingTitle = name;
+    void renameRoom(name);
   }
 }
 roomMetadata.observe(paintRoomName);
 topbar?.addEventListener("room-rename", (e) => {
-  roomMetadata.set("title", (e as CustomEvent<string>).detail);
+  void renameRoom((e as CustomEvent<string>).detail);
 });
 paintRoomName();
 if (drawer) drawer.profile = { name: identity.name, color: identity.color, photo: identity.photo };
@@ -1370,6 +1415,7 @@ const refusedDialog = createRefusedDialog({
   },
   onNewBoard: () => {
     const u = new URL(window.location.href);
+    u.pathname = "/";
     u.searchParams.set("room", randomRoomId());
     window.location.href = u.toString(); // a fresh, empty room
   },

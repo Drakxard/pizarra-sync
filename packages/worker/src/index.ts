@@ -6,8 +6,10 @@ import { keysToSweep, sweepIsSafe, type R2ObjectInfo } from "./reap-assets";
 
 // The Durable Object class must be exported from the Worker entry module.
 export { Board };
+export { RoomDirectory } from "./room-directory";
 
 export interface Env {
+  Directory: DurableObjectNamespace;
   /** One Durable Object per room; routed at /parties/main/:roomId. */
   Main: DurableObjectNamespace<Board>;
   /** R2 bucket for uploaded images (bytes; the Yjs doc only holds the key). */
@@ -163,7 +165,12 @@ export default {
     // Browser access is limited to this application and local development.
     // Room links remain the access mechanism; this is not user authentication.
     const origin = request.headers.get("origin");
-    if (origin && (url.pathname === "/upload" || url.pathname.startsWith("/parties/"))) {
+    if (
+      origin &&
+      (url.pathname === "/upload" ||
+        url.pathname.startsWith("/parties/") ||
+        url.pathname.startsWith("/rooms/"))
+    ) {
       const allowed = new Set([
         "https://pizarra-sync.vercel.app",
         "https://pizarra-sync-drakxards-projects.vercel.app",
@@ -191,7 +198,7 @@ export default {
     // Per-IP join rate limit before opening a room WS: bounds room-id enumeration (a scanner of the
     // friendly-name space makes one connection per guess). Generous (6/s) so legit multi-tab/reconnect
     // never trips it; fails OPEN where the binding/IP is absent (local dev). See docs/09 SEC-RM/SEC-DO.
-    if (url.pathname.startsWith("/parties/")) {
+    if (url.pathname.startsWith("/parties/") || url.pathname.startsWith("/rooms/")) {
       const ip = request.headers.get("cf-connecting-ip");
       if (ip && env.JOIN_RL) {
         try {
@@ -203,6 +210,10 @@ export default {
           /* limiter unavailable → fail open */
         }
       }
+    }
+
+    if (url.pathname.startsWith("/rooms/")) {
+      return env.Directory.get(env.Directory.idFromName("room-names")).fetch(request);
     }
 
     // PartyServer routes /parties/<binding>/<room> to the matching Durable Object

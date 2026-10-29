@@ -10,9 +10,17 @@ workers_dev = true
 name = "Main"
 class_name = "Board"
 
+[[durable_objects.bindings]]
+name = "Directory"
+class_name = "RoomDirectory"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Board"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["RoomDirectory"]
 
 [[r2_buckets]]
 binding = "UPLOADS"

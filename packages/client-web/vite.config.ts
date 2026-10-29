@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  build: { target: "es2022" },
   server: { port: 5173, host: "127.0.0.1" },
   preview: { port: 5173, host: "127.0.0.1" },
   // `iwer` (the WebXR emulator) is only imported by src/vr/test-xr.ts, which the e2e suite pulls in
