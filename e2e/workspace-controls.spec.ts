@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { calibrate, connectPeer, drawStroke, objectIds, uniqueRoom } from "./helpers";
+import { calibrate, connectPeer, drawStroke, injectSticky, objectIds, uniqueRoom } from "./helpers";
 
 test("mobile keeps the editable room title and sharing controls on screen", async ({ browser }) => {
   const a = await connectPeer(browser, uniqueRoom("mobile-title"), {
@@ -52,7 +52,7 @@ test("middle-button panning preserves the drawing tool and creates no stroke", a
   }
 });
 
-test("room names synchronize and persist without changing the shared link; help is in the menu", async ({
+test("room names update readable URLs while old and new links keep the same board; help is in the menu", async ({
   browser,
 }) => {
   const room = uniqueRoom("room-title");
@@ -60,16 +60,30 @@ test("room names synchronize and persist without changing the shared link; help 
   const b = await connectPeer(browser, room);
   try {
     const url = a.page.url();
+    await injectSticky(a.page, { id: "before-rename", x: 100, y: 100 });
+    // Open Share before renaming as well: it must refresh its link on the next open.
+    await a.page.locator('[data-testid="share"]').click();
+    await a.page.keyboard.press("Escape");
     const name = a.page.locator(".room-pill [contenteditable]");
     await name.fill("Clase de biología");
     await name.press("Enter");
     await expect(b.page.locator(".room-pill strong")).toHaveText("Clase de biología");
-    expect(a.page.url()).toBe(url);
+    await expect(a.page).toHaveURL(new RegExp(`/${room}/clase-de-biologia$`));
+    await expect(b.page).toHaveURL(new RegExp(`/${room}/clase-de-biologia$`));
+    const renamedUrl = a.page.url();
+    await a.page.locator('[data-testid="share"]').click();
+    await expect(a.page.locator(".share-url")).toHaveValue(renamedUrl);
+    await a.page.keyboard.press("Escape");
     await name.fill("Cancelar este cambio");
     await name.press("Escape");
     await expect(name).toHaveText("Clase de biología");
     await a.page.reload();
     await expect(a.page.locator(".room-pill strong")).toHaveText("Clase de biología");
+    await expect.poll(() => objectIds(a.page)).toContain("before-rename");
+    await b.page.goto(url); // An old query-string link must still open the populated board.
+    await expect(b.page.locator(".room-pill strong")).toHaveText("Clase de biología");
+    await expect.poll(() => objectIds(b.page)).toContain("before-rename");
+    await expect(b.page).toHaveURL(renamedUrl);
     await expect(a.page.locator("#help-btn")).toHaveCount(0);
     await a.page.locator("#nav-toggle").click();
     await a.page.locator('.app-menu [data-act="help"]').click();

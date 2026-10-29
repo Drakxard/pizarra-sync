@@ -1120,6 +1120,22 @@ function paintRoomName(): void {
   if (topbar && !topbar.contains(document.activeElement)) topbar.room = name;
   if (drawer) drawer.room = name;
   document.title = `Komuboard — ${name}`;
+  if (roomMetadata.get("title")) {
+    // The first segment remains the stable room ID; the second is a readable label.
+    // Old links and two rooms with the same title still resolve to their original boards.
+    const slug =
+      name
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 80) || "sala";
+    const url = new URL(window.location.href);
+    url.pathname = `/${room}/${slug}`;
+    url.searchParams.delete("room");
+    if (url.href !== window.location.href) window.history.replaceState(null, "", url);
+  }
 }
 roomMetadata.observe(paintRoomName);
 topbar?.addEventListener("room-rename", (e) => {
@@ -1303,11 +1319,14 @@ document.addEventListener("click", (e) => {
 // Share → "Share this board" dialog (room link + QR + Copy). Built lazily on first open; the room is
 // fixed per page load, so the dialog is reused thereafter.
 let shareDialog: ReturnType<typeof createShareDialog> | null = null;
+let shareUrl = "";
 function openShare(): void {
-  if (!shareDialog) {
-    const u = new URL(window.location.href);
-    u.searchParams.set("room", room);
-    shareDialog = createShareDialog(u.toString());
+  const url = window.location.href;
+  if (!shareDialog || shareUrl !== url) {
+    shareDialog?.close();
+    shareDialog?.remove();
+    shareDialog = createShareDialog(url);
+    shareUrl = url;
   }
   shareDialog.open();
 }
