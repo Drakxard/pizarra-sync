@@ -656,6 +656,13 @@ export class BoardCanvas {
   zoomTo(scale: number): void {
     this.viewport.zoomTo(scale);
   }
+  /** Move only the local camera, preserving the active tool and selection. */
+  panByScreen(dx: number, dy: number): void {
+    this.viewport.applyTransform(this.viewport.scale(), {
+      x: this.stage.x() + dx,
+      y: this.stage.y() + dy,
+    });
+  }
   /** Frame all content in view (or reset when the board is empty). */
   /** World AABB spanning every object on the board — strokes/connectors/text/stamps/images all live in
    *  the text-layer now (ADR-0009 P3). null when the board is empty. */

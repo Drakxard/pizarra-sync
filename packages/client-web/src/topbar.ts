@@ -32,7 +32,7 @@ export class CoTopbar extends HTMLElement {
       `<button class="iconbtn tb-redo" data-act="redo" type="button" data-testid="redo" data-i18n-aria="common.redo" data-i18n-title="common.redo">${icon("redo")}</button>` +
       `<button class="iconbtn tb-fit" data-act="reset-view" type="button" data-testid="reset-view" data-i18n-aria="topbar.resetView" data-i18n-title="topbar.resetView">${icon("fit")}</button>` +
       "</div>" +
-      `<div class="room-pill" data-testid="room"><span class="dot" data-testid="dot"></span> <strong>${room}</strong></div>` +
+      `<div class="room-pill" data-testid="room"><span class="dot" data-testid="dot"></span> <strong contenteditable="plaintext-only" role="textbox" tabindex="0" aria-label="Nombre de la sala" spellcheck="false">${room}</strong></div>` +
       '<div class="spacer"></div>' +
       // per-avatar tooltips live on the avatars themselves (a host title would double up)
       '<komu-avatar-presence-row id="presence-row" data-testid="presence-row"></komu-avatar-presence-row>' +
@@ -40,6 +40,25 @@ export class CoTopbar extends HTMLElement {
       `<button class="btn-share" data-act="share" type="button" data-testid="share" data-i18n-aria="topbar.shareBoard" data-i18n-title="topbar.shareBoard">${icon("share", "ico")}</button>`;
 
     this.#dot = this.querySelector('[data-testid="dot"]');
+    const name = this.querySelector<HTMLElement>(".room-pill strong")!;
+    let previous = room;
+    name.addEventListener("focus", () => {
+      previous = name.textContent ?? room;
+    });
+    name.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === "Escape") {
+        e.preventDefault();
+        if (e.key === "Escape") name.textContent = previous;
+        name.blur();
+      }
+    });
+    name.addEventListener("blur", () => {
+      const title = (name.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 80);
+      name.textContent = title || previous;
+      if (title && title !== previous) {
+        this.dispatchEvent(new CustomEvent("room-rename", { bubbles: true, detail: title }));
+      }
+    });
 
     this.addEventListener("click", (e) => {
       const act = (e.target as HTMLElement | null)

@@ -55,7 +55,7 @@ body {
      tracks the currently-visible height, keeping the bottom dock on-screen at every device height. */
   height: 100dvh;
   display: grid;
-  grid-template-rows: calc(56px + env(safe-area-inset-top, 0px)) 1fr;
+  grid-template-rows: 1fr;
   background: var(--paper);
   color: var(--ink);
   overflow: hidden;
@@ -82,13 +82,35 @@ body {
 
 /* ---------- top bar ---------- */
 .topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(56px + env(safe-area-inset-top, 0px));
   display: flex;
   align-items: center;
   gap: 16px;
   padding: env(safe-area-inset-top, 0px) 14px 0;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  background: transparent;
+  border: 0;
+  pointer-events: none;
   z-index: 20;
+}
+.topbar > :not(.spacer) {
+  pointer-events: auto;
+}
+.room-pill {
+  min-width: 0;
+  max-width: 35vw;
+}
+.room-pill strong[contenteditable] {
+  cursor: text;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.room-pill strong[contenteditable]:focus {
+  outline: 2px solid var(--accent);
+  border-radius: 3px;
 }
 .brand {
   font-weight: 800;
@@ -2860,7 +2882,6 @@ input[type="range"] {
   /* hide desktop-only chrome (settings + help live in the drawer on mobile) */
   .settings-btn,
   .zoombar,
-  .room-pill,
   .help-btn {
     display: none;
   }
@@ -2874,6 +2895,13 @@ input[type="range"] {
   /* on-screen undo/redo — the touch layout's keyboard-shortcut substitute */
   .tb-history {
     display: flex;
+  }
+  /* Keep the original mobile controls in their row; the editable title floats below them. */
+  .topbar .room-pill {
+    position: absolute;
+    top: calc(56px + env(safe-area-inset-top, 0px));
+    left: 14px;
+    max-width: calc(100vw - 28px);
   }
 
   /* tool dock → centered bottom bar (clears the home indicator) */

@@ -49,7 +49,9 @@ test("copy/paste: ⌘/Ctrl+C then +V duplicates the selection with a cascading o
 });
 
 test("paste with an empty clipboard is a no-op", async ({ browser }) => {
-  const { page, close } = await connectPeer(browser, uniqueRoom("cp-empty"));
+  const { page, close } = await connectPeer(browser, uniqueRoom("cp-empty"), { clipboard: true });
+  // The OS clipboard is shared across browser contexts; clear prior tests' copies as well.
+  await page.evaluate(() => navigator.clipboard.writeText(""));
   await drawStroke(page);
   expect((await objectIds(page)).length).toBe(1);
   await page.keyboard.press("v");

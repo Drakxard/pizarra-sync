@@ -196,7 +196,6 @@ app.innerHTML = `
 
   <komu-zoombar></komu-zoombar>
 
-  <button class="help-btn" id="help-btn" type="button" data-i18n-tip="common.help" data-i18n-aria="common.help">${icon("help")}</button>
 
   <komu-drawer room="${room}"></komu-drawer>
 `;
@@ -228,6 +227,58 @@ const canvas = new BoardCanvas({
   },
 });
 if (window.__komuboard) window.__komuboard.canvas = canvas; // e2e hook: introspect remote presence
+// Middle-button drag moves only the local camera; it never changes the selected tool.
+let middlePan: { id: number; x: number; y: number; cursor: string } | null = null;
+boardEl.addEventListener(
+  "pointerdown",
+  (e) => {
+    if (e.button !== 1 || middlePan) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    middlePan = { id: e.pointerId, x: e.clientX, y: e.clientY, cursor: boardEl.style.cursor };
+    boardEl.style.cursor = "grabbing";
+    boardEl.setPointerCapture(e.pointerId);
+  },
+  true,
+);
+window.addEventListener(
+  "pointermove",
+  (e) => {
+    if (!middlePan || e.pointerId !== middlePan.id) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    canvas.panByScreen(e.clientX - middlePan.x, e.clientY - middlePan.y);
+    middlePan.x = e.clientX;
+    middlePan.y = e.clientY;
+  },
+  true,
+);
+function endMiddlePan(): void {
+  if (!middlePan) return;
+  const { id, cursor } = middlePan;
+  middlePan = null;
+  if (boardEl!.hasPointerCapture(id)) boardEl!.releasePointerCapture(id);
+  boardEl!.style.cursor = cursor;
+}
+for (const event of ["pointerup", "pointercancel"] as const) {
+  window.addEventListener(
+    event,
+    (e) => {
+      if (!middlePan || e.pointerId !== middlePan.id) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      endMiddlePan();
+    },
+    true,
+  );
+}
+window.addEventListener("blur", endMiddlePan);
+boardEl.addEventListener("lostpointercapture", endMiddlePan);
+for (const event of ["mousedown", "auxclick"] as const) {
+  boardEl.addEventListener(event, (e) => {
+    if (e.button === 1) e.preventDefault();
+  });
+}
 // Accessibility: mirror the board into a screen-reader-navigable list, announce presence, and let a
 // mirror item's focus/activation select that object so the keyboard shortcuts can act on it (§5.1).
 createBoardA11y({
@@ -595,12 +646,9 @@ boardEl?.addEventListener("drop", (e) => {
 });
 
 // --- Cross-tab copy/paste ---------------------------------------------------------------------
-// Board objects travel through the SYSTEM clipboard as a tagged JSON payload `{n, o}` (n = a nonce
-// stamping OUR most recent copy, o = the objects), so you can copy in one tab/room and paste in
-// another. Same-tab ⌘V is pasted by the KEYBOARD handler (in-app buffer) — reliable in every browser
-// and headless; the paste EVENT (which only fires on ⌘V in real browsers, never on Playwright's
-// synthetic ⌘V) handles CROSS-tab payloads (a different nonce) and images. The nonce is what stops a
-// same-tab ⌘V from being pasted twice (once by the keyboard, once by the event).
+// Board objects travel through the system clipboard as a tagged JSON payload `{n, o}`.
+// Native paste handles objects and images once; a delayed fallback supports environments
+// that do not deliver ClipboardEvent. The nonce preserves same-tab cascading offsets.
 const CLIP_PREFIX = "komuboard/v1:";
 let lastCopyNonce = "";
 interface ClipPayload {
@@ -631,26 +679,40 @@ function copyToClipboards(): void {
  *  clipboard async (cross-tab), else fall back to the in-app buffer (same-tab). */
 async function pasteFromClipboards(): Promise<void> {
   try {
-    const payload = parseClipboard(await navigator.clipboard?.readText?.());
-    if (payload && payload.n !== lastCopyNonce && canvas.pasteExternal(payload.o)) return;
+    if (navigator.clipboard?.read) {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const type = item.types.find((type) => type.startsWith("image/"));
+        if (type) {
+          await placeImageFiles([
+            new File([await item.getType(type)], "clipboard-image", { type }),
+          ]);
+          return;
+        }
+      }
+    }
+    const text = await navigator.clipboard?.readText?.();
+    const payload = parseClipboard(text);
+    if (payload && canvas.pasteExternal(payload.o)) return;
+    if (text) return; // External text must not paste an old in-app selection.
   } catch {
     /* clipboard read blocked → in-app fallback */
   }
   canvas.pasteSelection();
 }
 
-// Paste EVENT (real-browser ⌘V + external app pastes): a CROSS-tab payload (different nonce) or an
-// image. A same-tab payload (matching nonce) is skipped — the keyboard handler already pasted it.
+// Native paste owns both same-tab and cross-tab objects, as well as external images.
 // External plain text is never hijacked into pasting our objects.
+let pasteFallbackTimer = 0;
 window.addEventListener("paste", (e) => {
+  window.clearTimeout(pasteFallbackTimer);
   if (isTyping(e.target)) return; // a focused field / text editor owns the paste
   const payload = parseClipboard(e.clipboardData?.getData("text/plain"));
   if (payload) {
-    if (payload.n !== lastCopyNonce) {
-      e.preventDefault();
-      canvas.pasteExternal(payload.o);
-    }
-    return; // same-tab payload → the keyboard handler owns it
+    e.preventDefault();
+    if (payload.n === lastCopyNonce) canvas.pasteSelection();
+    else canvas.pasteExternal(payload.o);
+    return;
   }
   const files = (e.clipboardData?.items ? [...e.clipboardData.items] : [])
     .filter((it) => it.kind === "file" && it.type.startsWith("image/"))
@@ -1013,12 +1075,12 @@ window.addEventListener("keydown", (e) => {
     }
     return;
   }
-  // ⌘V pastes the in-app buffer (same-tab) — reliable in every browser and headless. Cross-tab
-  // payloads + images ride the native `paste` event (which fires on a real ⌘V); its nonce check
-  // prevents a same-tab double.
+  // Keep the native paste event enabled so clipboard images can reach the uploader.
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") {
-    canvas.pasteSelection();
-    e.preventDefault();
+    // Let the native paste event deliver images without an extra clipboard permission prompt.
+    // Synthetic shortcuts / browsers without that event use the async/in-app fallback.
+    window.clearTimeout(pasteFallbackTimer);
+    pasteFallbackTimer = window.setTimeout(() => void pasteFromClipboards(), 250);
     return;
   }
   if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -1052,6 +1114,18 @@ window.addEventListener("keyup", (e) => {
 // --------------------------------------------------------------------------
 const topbar = document.querySelector("komu-topbar");
 const drawer = document.querySelector("komu-drawer");
+const roomMetadata = ydoc.getMap<string>("metadata");
+function paintRoomName(): void {
+  const name = roomMetadata.get("title") || room;
+  if (topbar && !topbar.contains(document.activeElement)) topbar.room = name;
+  if (drawer) drawer.room = name;
+  document.title = `Komuboard — ${name}`;
+}
+roomMetadata.observe(paintRoomName);
+topbar?.addEventListener("room-rename", (e) => {
+  roomMetadata.set("title", (e as CustomEvent<string>).detail);
+});
+paintRoomName();
 if (drawer) drawer.profile = { name: identity.name, color: identity.color, photo: identity.photo };
 
 const syncSettings = (): void => syncSettingsControls(theme, gridMode);
@@ -1128,6 +1202,7 @@ function toggleAppMenu(): void {
     `<button class="app-menu-item" type="button" data-act="vr"><span data-i18n="menu.enterVr"></span><span class="drawer-item-ic">${icon("headset")}</span></button>` +
     '<div class="app-menu-sep"></div>' +
     `<button class="app-menu-item" type="button" data-act="export"><span data-i18n="menu.export"></span><span class="drawer-item-ic">${icon("download")}</span></button>` +
+    `<button class="app-menu-item" type="button" data-act="help"><span data-i18n="common.help"></span><span class="drawer-item-ic">${icon("help")}</span></button>` +
     "</div>";
   document.body.appendChild(menu);
   applyTranslations(menu); // lazily-built subtree → sweep it now (picker label + item text)
@@ -1157,6 +1232,11 @@ mobileMql.addEventListener("change", closeAppMenu); // breakpoint flip → drop 
 
 // Help → keyboard-shortcuts dialog: a floating "?" button on desktop, a drawer item on mobile.
 document.getElementById("help-btn")?.addEventListener("click", () => shortcutsDialog.open());
+document.addEventListener("click", (e) => {
+  if (!(e.target as HTMLElement | null)?.closest('.app-menu [data-act="help"]')) return;
+  closeAppMenu();
+  shortcutsDialog.open();
+});
 drawer?.addEventListener("help", () => shortcutsDialog.open());
 
 // Export → the whole board as PNG or PDF with the chosen background. An opaque overlay masks the brief
