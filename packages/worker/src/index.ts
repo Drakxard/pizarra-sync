@@ -160,6 +160,22 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    // Browser access is limited to this application and local development.
+    // Room links remain the access mechanism; this is not user authentication.
+    const origin = request.headers.get("origin");
+    if (origin && (url.pathname === "/upload" || url.pathname.startsWith("/parties/"))) {
+      const allowed = new Set([
+        "https://pizarra-sync.vercel.app",
+        "https://pizarra-sync-drakxards-projects.vercel.app",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+      ]);
+      const preview = /^https:\/\/pizarra-sync-[a-z0-9]+-drakxards-projects\.vercel\.app$/;
+      if (!allowed.has(origin) && !preview.test(origin)) {
+        return new Response("Origin not allowed", { status: 403 });
+      }
+    }
+
     // Image upload + serve (before the PartyServer WS routing).
     if (url.pathname === "/upload") return handleUpload(request, env);
     if (url.pathname.startsWith("/img/")) {
