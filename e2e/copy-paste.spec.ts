@@ -10,7 +10,7 @@ const rectOf = (page: import("@playwright/test").Page, id: string) =>
 test("copy/paste: ⌘/Ctrl+C then +V duplicates the selection with a cascading offset", async ({
   browser,
 }) => {
-  const { page, close } = await connectPeer(browser, uniqueRoom("cp"));
+  const { page, close } = await connectPeer(browser, uniqueRoom("cp"), { clipboard: true });
 
   await drawStroke(page); // a pen stroke
   const before = await objectIds(page);
@@ -23,6 +23,7 @@ test("copy/paste: ⌘/Ctrl+C then +V duplicates the selection with a cascading o
   await page.keyboard.press("v"); // select tool
   await page.keyboard.press("Control+a");
   await page.keyboard.press("Control+c");
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain(origId);
   await page.keyboard.press("Control+v");
 
   await expect.poll(() => objectIds(page).then((ids) => ids.length)).toBe(2);

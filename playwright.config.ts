@@ -10,6 +10,9 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 15_000 },
   fullyParallel: true,
+  // Native clipboard and browser focus are shared by all contexts on a CI desktop.
+  // Parallel workers can paste another test's copy, even when rooms are isolated.
+  workers: process.env.CI ? 1 : undefined,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? "github" : "list",
