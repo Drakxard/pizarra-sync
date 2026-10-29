@@ -1,7 +1,7 @@
 {
   "framework": null,
   "installCommand": "npx --yes pnpm@9.15.0 install --frozen-lockfile",
-  "buildCommand": "npx --yes pnpm@9.15.0 --filter @komuboard/client-web exec vite build",
+  "buildCommand": "VITE_WORKER_HOST=pizarra-komuboard.dariorafael2005.workers.dev npx --yes pnpm@9.15.0 --filter @komuboard/client-web build",
   "outputDirectory": "packages/client-web/dist",
   "env": {
     "VITE_WORKER_HOST": "pizarra-komuboard.dariorafael2005.workers.dev"
