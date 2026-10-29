@@ -22,6 +22,7 @@ test("an existing named board upgrades to a short link and its previous two-segm
     }, title);
     await expect(a.page).toHaveURL(new RegExp(`/${title}$`));
     await a.page.goto(`/${room}/${title}`);
+    await expect(a.page.locator(".room-pill strong")).toHaveText(title);
     await expect.poll(() => objectIds(a.page)).toContain("legacy-content");
     await expect(a.page).toHaveURL(new RegExp(`/${title}$`));
   } finally {
@@ -75,6 +76,7 @@ test("renaming twice leaves only the latest name visible and keeps the populated
     expect(b.page.url()).toBe(otherUrl);
     expect(await objectIds(b.page)).toEqual([]);
     await a.page.reload();
+    await expect(a.page.locator(".room-pill strong")).toHaveText(second);
     await expect.poll(() => objectIds(a.page)).toContain("retained");
     await expect(a.page).toHaveURL(new RegExp(`/${second}$`));
   } finally {
